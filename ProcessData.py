@@ -2,8 +2,14 @@ import tables
 import h5py
 import numpy as np
 import matplotlib
-matplotlib.use('agg')
-import matplotlib.pyplot as plt
+try:
+    cfg = get_ipython().config
+    if cfg['IPKernelApp']['kernel_class'] == 'google.colab._kernel.Kernel':
+        pass
+    else:
+        matplotlib.use('Agg')
+except NameError:
+    matplotlib.use('Agg')import matplotlib.pyplot as plt
 from progressbar import progressbar
 
 def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
@@ -85,6 +91,6 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
 
 
 if __name__ == '__main__':
-    path_to_file = '/user/pgunnink/public_html/Kascade/Kascade_data.h5'
+    path_to_file = '/user/pgunnink/public_html/Kascade/kascade.h5'
     new_h5 = '/data/hisparc/pgunnink/MachineLearning/Kascade/Kascade_Keras.h5'
     process_kascade(path_to_file, new_h5, trigger=3)
