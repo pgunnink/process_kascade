@@ -11,6 +11,7 @@ import h5py
 import progressbar
 import pdb
 from sapphire.analysis.find_mpv import FindMostProbableValueInSpectrum
+from pathlib import Path
 
 from ProcessDataML.DegRad import azimuth_zenith_to_cartestian
 
@@ -22,7 +23,7 @@ ADC_THRESHOLD = 20
 ADC_TIME_PER_SAMPLE = 2.5
 N_stations = 1
 VERBOSE = True
-N_TIME_BINS = 3
+N_TIME_BINS = 100
 PLOT = False
 overwrite = True
 steps = 1
@@ -35,9 +36,27 @@ def find_closest(bins, value):
         if value>=bins[i] and value<bins[i+1]:
             return i
 
+class Events(tables.IsDescription):
+    id = tables.Int32Col()
+    traces = tables.Float32Col(shape=(N_stations * 4, 80))
+    labels = tables.Float32Col(shape=3)
+    timings = tables.Float32Col(shape=4)
+    pulseheights = tables.Float32Col(shape=4)
+    integrals = tables.Float32Col(shape=4)
+    mips = tables.Float32Col(shape=4)
+    rec_z = tables.Float32Col()
+    rec_a = tables.Float32Col()
+    zenith = tables.Float32Col()
+    azimuth = tables.Float32Col()
+    timestamp = tables.Time32Col()
+    core_distance = tables.Float32Col()
+    mpv = tables.Float32Col()
+    energy = tables.Float32Col()
 
-
-with h5py.File(path_to_new_file, 'w') as f:
+with tables.open_file(path_to_new_file, 'w') as f:
+    group = f.create_group('/', 'kascade', 'Kascade data')
+    table = f.create_table(group, 'events', Events, 'Events')
+    new_row = table.row
     with tables.open_file(path_to_kascade,'r') as data:
         # events with offsets corrected are stored in /reconstructions_offsets
         events = data.root.reconstructions_offsets
@@ -51,48 +70,40 @@ with h5py.File(path_to_new_file, 'w') as f:
         min_time = times.min()
         max_time = times.max()+1
         del times # clean up memory
-
-        time_bins = np.linspace(min_time,max_time, N_TIME_BINS) # 100 bins over 35 days -> ~8
-                                                        # hours per bin
-        mpv_mip = np.zeros(len(time_bins)-1)
-        iterator = range(len(time_bins)-1)
-        if VERBOSE:
-            iterator = progressbar.progressbar(iterator)
-        for i in iterator: #every 8 hours (roughly)
-            # look for rows where timestamp falls inbetween two bin values
-            conditions = {'time_lower_bound': time_bins[i],
-                          'time_upper_bound': time_bins[i+1]}
-            pulseheights = np.array([row['pulseheights']
-                            for row in
-                            events.where('(timestamp>=time_lower_bound) & '
-                                        '(timestamp<time_upper_bound)',
-                                         condvars=conditions)]).flatten()
-            if len(pulseheights)>0:
-                # create histogram and pass this to the FindMostProbableValueInSpectrum
-                # class from Sapphire, which finds the mpv in the pulseheight spectrum
-                # by fitting a normal distribution
-                h, bins = np.histogram(pulseheights, bins=np.linspace(0, 2000, 50))
-                findMPV = FindMostProbableValueInSpectrum(h,bins)
-                mpv, found = findMPV.find_mpv()
-                if found:
-                    mpv_mip[i] = mpv
-
+        load_file = Path('main.npz')
+        if load_file.is_file():
+            loaded = np.load('main.npz')
+            time_bins = loaded['time_bins']
+            mpv_mip = loaded['mpv_mip']
+        else:
+            time_bins = np.linspace(min_time,max_time, N_TIME_BINS) # 100 bins over 35
+            # days  -> ~8 hours per bin
+            mpv_mip = np.zeros(len(time_bins)-1)
+            iterator = range(len(time_bins)-1)
+            if VERBOSE:
+                iterator = progressbar.progressbar(iterator)
+            for i in iterator: #every 8 hours (roughly)
+                # look for rows where timestamp falls inbetween two bin values
+                conditions = {'time_lower_bound': time_bins[i],
+                              'time_upper_bound': time_bins[i+1]}
+                pulseheights = np.array([row['pulseheights']
+                                for row in
+                                events.where('(timestamp>=time_lower_bound) & '
+                                            '(timestamp<time_upper_bound)',
+                                             condvars=conditions)]).flatten()
+                if len(pulseheights)>0:
+                    # create histogram and pass this to the FindMostProbableValueInSpectrum
+                    # class from Sapphire, which finds the mpv in the pulseheight spectrum
+                    # by fitting a normal distribution
+                    h, bins = np.histogram(pulseheights, bins=np.linspace(0, 2000, 50))
+                    findMPV = FindMostProbableValueInSpectrum(h,bins)
+                    mpv, found = findMPV.find_mpv()
+                    if found:
+                        mpv_mip[i] = mpv
+            np.savez('main.npz', mpv_mip=mpv_mip, time_bins=time_bins)
 
         # create h5py dataset to populate later
-        traces_dataset = f.create_dataset('traces', shape=(entries, N_stations * 4, 80),
-                                  dtype='float32', chunks=True)
-        labels_dataset = f.create_dataset('labels', shape=(entries, 3), dtype='float32', chunks=True)
-        input_features_dataset = f.create_dataset('input_features',shape=(entries, N_stations *
-                                                                  4, 2), dtype = 'float32', chunks=True)
-        pulseheights_dataset = f.create_dataset('pulseheights', shape=(entries, N_stations *
-                                                               4), dtype = 'float32', chunks=True)
-        rec_z_dataset = f.create_dataset('rec_z', shape=(entries,), dtype='float32', chunks=True)
-        rec_a_dataset = f.create_dataset('rec_a', shape=(entries,), dtype='float32', chunks=True)
-        zenith_dataset = f.create_dataset('zenith', shape=(entries,), dtype='float32', chunks=True)
-        azimuth_dataset = f.create_dataset('azimuth', shape=(entries,), dtype='float32', chunks=True)
-        timestamp_dataset = f.create_dataset('timestamp', shape=(entries,), dtype='int32', chunks=True)
-        core_distance_dataset = f.create_dataset('core_distance', shape=(entries,),
-                                                 dtype='float32', chunks=True)
+
 
         count = 0
         ignored = 0
@@ -178,31 +189,32 @@ with h5py.File(path_to_new_file, 'w') as f:
                 reference_azimuth = row['reference_phi']
 
 
-                timings_event = np.array([row['t1'], row['t2'], row['t3'], row['t4']]) \
-                                * 10e9
-                pulseheights_event = row['pulseheights'] * 0.57 / mip_peak # ADC counts
+                timings_event = np.array([row['t1'], row['t2'], row['t3'], row['t4']])
+                pulseheights_event = row['pulseheights'] * 0.57 # ADC counts
                 #  -> mV -> normalise by mpv
-                integrals_event = row['integrals'] * 0.57 / mip_peak # ADC counts ->
-                #  mV -> normalise by mpv
+                integrals_event = np.sum(traces_new, axis=1)
 
                 # convert to x,y,z
                 x, y, z = azimuth_zenith_to_cartestian(reference_zenith,
                                                        reference_azimuth)
 
                 # save everything
-                traces_dataset[count,:] = traces_new / mip_peak # rescale traces by mip
-                #  peak
-                labels_dataset[count,:] = [x,y,z]
-                input_features_dataset[count, :, 0] = timings_ns
-                input_features_dataset[count, :, 1] = integrals_event
-                pulseheights_dataset[count,:] = pulseheights_event
-                rec_z_dataset[count] = reconstructed_zenith
-                rec_a_dataset[count] = reconstructed_azimuth
-                zenith_dataset[count] = reference_zenith
-                azimuth_dataset[count] = reference_azimuth
-                timestamp_dataset[count] = timestamp
-                core_distance_dataset[count] = row['r']
-
+                new_row['id'] = count
+                new_row['traces'] = traces_new / mip_peak
+                new_row['labels'] = [x,y,z]
+                new_row['pulseheights'] = pulseheights_event
+                new_row['rec_z'] = reconstructed_zenith
+                new_row['rec_a'] = reconstructed_azimuth
+                new_row['integrals'] = integrals_event
+                new_row['zenith'] = reference_zenith
+                new_row['azimuth'] = reference_azimuth
+                new_row['timestamp'] = timestamp
+                new_row['core_distance'] = row['r']
+                new_row['mips'] = pulseheights_event / mip_peak
+                new_row['mpv'] = mip_peak
+                new_row['energy'] = row['k_energy']
+                new_row['timings'] = timings_event
+                new_row.append()
                 count += 1
             else:
                 if VERBOSE:
@@ -215,23 +227,13 @@ with h5py.File(path_to_new_file, 'w') as f:
             print('Total new entries: %s' % count)
 
         # save the time_bins and the mips per bin, for future reference
-        f.create_dataset('time_bins', data=time_bins, dtype='float32')
-        f.create_dataset('mips_per_time_bin', data=mpv_mip, dtype='float32')
+        table.attrs.time_bins = time_bins
+        table.attrs.mips_per_time_bin = mpv_mip
+        table.flush()
 
-        # rescale datasets to account for ignored events
-        traces_dataset.resize(count, axis=0)
-        labels_dataset.resize(count, axis=0)
-        input_features_dataset.resize(count, axis=0)
-        input_features_dataset.resize(count, axis=0)
-        pulseheights_dataset.resize(count, axis=0)
-        rec_z_dataset.resize(count, axis=0)
-        rec_a_dataset.resize(count, axis=0)
-        zenith_dataset.resize(count, axis=0)
-        azimuth_dataset.resize(count, axis=0)
-        timestamp_dataset.resize(count, axis=0)
-        core_distance_dataset.resize(count, axis=0)
 
-        # normalize data (for now, in production this would be done on the fly)
+        '''
+         normalize data (for now, in production this would be done on the fly)
         timings = input_features_dataset[:][:, :, 0]
         idx = timings != 0.
         timings[~idx] = np.nan
@@ -255,3 +257,4 @@ with h5py.File(path_to_new_file, 'w') as f:
         input_features_dataset[:] = np.stack((timings,total_traces),axis=2)
         input_features_dataset.attrs['timings_std'] = timing_std
         input_features_dataset.attrs['integrals_std'] = integral_std
+        '''
