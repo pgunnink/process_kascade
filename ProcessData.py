@@ -86,6 +86,7 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
             print('Std of timings: %s' % np.nanstd(timings))
             timings /= np.nanstd(timings)
             timings[~idx] = 0.
+            timings[np.isnan(timings)] = 0
 
             input_features[:, :, :] = np.stack((timings, total_traces), axis=2)
 
