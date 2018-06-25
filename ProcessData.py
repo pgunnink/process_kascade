@@ -58,6 +58,8 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
             azimuth.resize(i, axis=0)
             energy.resize(i, axis=0)
             core_distance.resize(i, axis=0)
+            timings.resize((i,4))
+            total_traces.resize((i, 4))
 
             total_traces = np.log10(total_traces + 1)
             total_traces -= np.mean(total_traces, axis=1)[:, np.newaxis]
