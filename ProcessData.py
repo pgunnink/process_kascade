@@ -13,7 +13,7 @@ except NameError:
 import matplotlib.pyplot as plt
 from progressbar import progressbar
 
-def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
+def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True, std_timings=None):
     with tables.open_file(path_to_file, 'r') as data:
         events = data.root.kascade.events
         entries = len(events)
@@ -84,7 +84,9 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
                     bins=np.linspace(-100, 100, 50))
                 plt.savefig('histogram_timings.png')
             print('Std of timings: %s' % np.nanstd(timings))
-            timings /= np.nanstd(timings)
+            if std_timings is not None:
+                std_timings = np.nanstd(timings)
+            timings /= std_timings
             timings[~idx] = 0.
             timings[np.isnan(timings)] = 0
 
