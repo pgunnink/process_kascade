@@ -9,7 +9,8 @@ try:
     else:
         matplotlib.use('Agg')
 except NameError:
-    matplotlib.use('Agg')import matplotlib.pyplot as plt
+    matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from progressbar import progressbar
 
 def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True):
