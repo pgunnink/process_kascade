@@ -1,4 +1,4 @@
-This is a git repository which contains code to work with the Kascade data. Installation is simple
+This is a git repository which contains code to work with the Kascade data. Installation is simple:
 
 ``git clone https://github.com/pgunnink/process_kascade``
 
