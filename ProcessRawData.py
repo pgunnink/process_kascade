@@ -7,16 +7,15 @@ import numpy as np
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
-import h5py
 import progressbar
-import pdb
 from sapphire.analysis.find_mpv import FindMostProbableValueInSpectrum
 from pathlib import Path
 
 from ProcessDataML.DegRad import azimuth_zenith_to_cartestian
 
+
 path_to_kascade = '/data/hisparc/pgunnink/MachineLearning/Kascade/kascade.h5'
-path_to_new_file = '/data/hisparc/pgunnink/MachineLearning/Kascade/ML_file.h5'
+path_to_new_file = '/data/hisparc/pgunnink/MachineLearning/Kascade/ML_file_testing.h5'
 
 
 ADC_THRESHOLD = 20
@@ -59,7 +58,7 @@ with tables.open_file(path_to_new_file, 'w') as f:
     new_row = table.row
     with tables.open_file(path_to_kascade,'r') as data:
         # events with offsets corrected are stored in /reconstructions_offsets
-        events = data.root.reconstructions_offsets
+        events = data.root.reconstructions_offsets_complete
         entries = len(events)
         if VERBOSE:
             print("Total entries before filtering: %s" % entries)
@@ -102,9 +101,6 @@ with tables.open_file(path_to_new_file, 'w') as f:
                         mpv_mip[i] = mpv
             np.savez('main.npz', mpv_mip=mpv_mip, time_bins=time_bins)
 
-        # create h5py dataset to populate later
-
-
         count = 0
         ignored = 0
         if VERBOSE:
@@ -115,7 +111,7 @@ with tables.open_file(path_to_new_file, 'w') as f:
             iterator = events.iterrows(start=0, stop=entries, step=steps)
         # loop over all rows
         for row in iterator:
-            if count == 49783: # this event is wrong so hardcode it out #YOLO
+            if count == 49783: # this event is wrong so hardcode it out YOLO
                 continue
             traces = row['traces']
             timings_ADC = []
@@ -210,7 +206,9 @@ with tables.open_file(path_to_new_file, 'w') as f:
                 new_row['azimuth'] = reference_azimuth
                 new_row['timestamp'] = timestamp
                 new_row['core_distance'] = row['r']
-                new_row['mips'] = pulseheights_event / mip_peak
+                new_row['mips'] = pulseheights_event / mip_peak / .57 # because
+                # mip peaks were determined using the ADC counts, and we have now
+                # converted the pulseheights to mV
                 new_row['mpv'] = mip_peak
                 new_row['energy'] = row['k_energy']
                 new_row['timings'] = timings_event
@@ -230,31 +228,3 @@ with tables.open_file(path_to_new_file, 'w') as f:
         table.attrs.time_bins = time_bins
         table.attrs.mips_per_time_bin = mpv_mip
         table.flush()
-
-
-        '''
-         normalize data (for now, in production this would be done on the fly)
-        timings = input_features_dataset[:][:, :, 0]
-        idx = timings != 0.
-        timings[~idx] = np.nan
-        timings -= np.nanmean(timings, axis=1)[:, np.newaxis]
-        plt.figure()
-        plt.hist(np.extract(~np.isnan(timings.flatten()), timings.flatten()),
-                 bins=np.linspace(-25, 25, 50))
-        plt.savefig('histogram_timings.png')
-        print('Std of timings: %s' % np.nanstd(timings))
-        timing_std = np.nanstd(timings)
-        timings /= np.nanstd(timings)
-        timings[~idx] = 0.
-
-
-        total_traces = np.log10(input_features_dataset[:][:, :, 1] + 1)
-        total_traces -= np.mean(total_traces, axis=1)[:, np.newaxis]
-        integral_std = np.nanstd(total_traces)
-        print("Std of integrals: %s" % np.nanstd(total_traces))
-        total_traces /= np.nanstd(total_traces)
-
-        input_features_dataset[:] = np.stack((timings,total_traces),axis=2)
-        input_features_dataset.attrs['timings_std'] = timing_std
-        input_features_dataset.attrs['integrals_std'] = integral_std
-        '''

@@ -13,7 +13,23 @@ except NameError:
 import matplotlib.pyplot as plt
 from progressbar import progressbar
 
-def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True, std_timings=None):
+def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True, std_timings=None,
+                    logtransform=True):
+    """
+    This is just a simple function which takes the h5 file produced by ProcessRawData.py and
+    applies the log transformations and saves it to a h5 file Keras can read.
+    :param path_to_file: orginal file created by ProcessRawData.py
+    :param new_h5: output
+    :param trigger: minimum number of triggered stations
+    :param verbose: if True print some stuff
+    :param std_timings: you need to manually enter the standard deviation of the
+    timings in order to get the correct result. For this data I used 10.26,
+    this rescales the timings in such a way that they are from -1 to 1. Because of
+    outliers just calling np.std gives a very high std and so the data gets
+    resclaled badly.
+    :param logtransform: if True log transform the traces
+    :return: nothing
+    """
     with tables.open_file(path_to_file, 'r') as data:
         events = data.root.kascade.events
         entries = len(events)
@@ -42,7 +58,8 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True, std_timings
             for row in progressbar(events.iterrows(), max_value=entries):
                 if np.count_nonzero(np.isnan(row['timings'])) <= (4-trigger):
                     t = row['traces']
-                    t = np.log10(t + 1)
+                    if logtransform:
+                        t = np.log10(t + 1)
 
                     traces[i,] = t
                     labels[i,] = row['labels']
@@ -91,10 +108,3 @@ def process_kascade(path_to_file, new_h5, trigger = 3, verbose=True, std_timings
             timings[np.isnan(timings)] = 0
 
             input_features[:, :, :] = np.stack((timings, total_traces), axis=2)
-
-
-
-if __name__ == '__main__':
-    path_to_file = '/user/pgunnink/public_html/Kascade/kascade.h5'
-    new_h5 = '/data/hisparc/pgunnink/MachineLearning/Kascade/Kascade_Keras.h5'
-    process_kascade(path_to_file, new_h5, trigger=3)
